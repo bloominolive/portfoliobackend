@@ -1,14 +1,16 @@
-const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
-const cors = require('cors');
-const { formatDistanceToNow } = require('date-fns');
+import express, { json } from 'express';
+import { createClient } from '@supabase/supabase-js';
+import cors from 'cors';
+import { formatDistanceToNow } from 'date-fns';
 
+//using env for variables
 require('dotenv').config();
 
+//using express library for http requests and middleware
 const app = express();
 const port = 3001;
 
-// Use CORS middleware
+// Use CORS middleware with local host
 app.use(cors({
   origin: 'http://localhost:3000',
   methods: ['GET', 'POST'],
@@ -16,9 +18,9 @@ app.use(cors({
 }));
 
 // Middleware to parse JSON
-app.use(express.json());
+app.use(json());
 
-// API Endpoint to Fetch Data
+// API Endpoint to fetch data, checking authorization 
 app.post('/messages', async (req, res) => {
   const { authorization } = req.headers;
   const { startDate, endDate, showCompleted, nameFilter } = req.body;
@@ -32,6 +34,7 @@ app.post('/messages', async (req, res) => {
     return res.status(401).json({ error: 'Token is missing' });
   }
 
+  //using supabase client, putting the url and key in to access data with token
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
     global: {
       headers: {
@@ -46,6 +49,7 @@ app.post('/messages', async (req, res) => {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
 
+    //query for table with desired fields for UI
     let query = supabase
       .from('Messages')
       .select('*')
@@ -53,10 +57,11 @@ app.post('/messages', async (req, res) => {
       .lte('created_at', endDate)
       .order('created_at', { ascending: false }); // Order by created_at descending
 
+      //originally only showing items not completed or "pending" in list
     if (!showCompleted) {
       query = query.eq('is_completed', false);
     }
-
+    //allowing to filter by name
     if (nameFilter) {
       query = query.or(`first_name.ilike.%${nameFilter}%,last_name.ilike.%${nameFilter}%`);
     }
@@ -67,6 +72,7 @@ app.post('/messages', async (req, res) => {
       throw error;
     }
 
+    // setting the date to show how many days ago a message was created
     const formattedData = data.map((message) => ({
       ...message,
       created_at: formatDistanceToNow(new Date(message.created_at), { addSuffix: true }),
@@ -80,7 +86,7 @@ app.post('/messages', async (req, res) => {
 });
 
 
-
+// code for deleting messages, checking for authorization to do so beforehand
 app.post('/messages/delete', async (req, res) => {
   const { authorization } = req.headers;
   const { ids } = req.body;
@@ -102,6 +108,7 @@ app.post('/messages/delete', async (req, res) => {
     },
   });
 
+  //deleting messages by id
   try {
     const { error } = await supabase
       .from('Messages')
@@ -119,6 +126,7 @@ app.post('/messages/delete', async (req, res) => {
   }
 });
 
+// updating the list to have items marked as complete, checking for authorization first
 app.post('/messages/mark-complete', async (req, res) => {
   const { authorization } = req.headers;
   const { ids } = req.body;
@@ -140,6 +148,7 @@ app.post('/messages/mark-complete', async (req, res) => {
     },
   });
 
+  //updating message to complete
   try {
     const { error } = await supabase
       .from('Messages')
